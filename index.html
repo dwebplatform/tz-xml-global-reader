@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <script type='text/javascript' src='https://code.jquery.com/jquery-3.5.1.min.js'></script>
+  <script type='text/javascript' src="https://cdn.rawgit.com/abdmob/x2js/master/xml2json.js">
+  </script>
+  <style>
+    body {
+      font-family: monospace;
+    }
+
+    #xmlToJSON {
+      margin-top: 20px;
+      line-height: 25px;
+    }
+  </style>
+
+  <script src="string_utils.js"></script>
+  <script>
+    const getXMLDOM = (xml) => {
+      const parser = new DOMParser();
+      const xmlDom = parser.parseFromString(xml, "application/xml");
+      return xmlDom;
+    };
+    // количество битых ссылок
+    function getWrongAmount(xmlDom, lookingAttr = "href", findingAttr = "id") {
+      let wrongHrefCount = 0;
+      const allHrefs = xmlDom.querySelectorAll(`[${lookingAttr}]`);
+      allHrefs.forEach((h) => {
+        let param = h.getAttribute(`${lookingAttr}`);
+        let findedElement = xmlDom.querySelector(`[${findingAttr}="${param}"]`);
+        if (!findedElement) {
+          wrongHrefCount++;
+        }
+      });
+      return wrongHrefCount;
+    }
+
+    function convertXMLToJson(xml) {
+      let xmlData = $.parseXML(xml);
+      let x2js = new X2JS();
+      let data = x2js.xml2json(xmlData);
+      return data;
+    }
+
+    const calcTotalSymbols = (data, calcSymbolsCallBack) => {
+      if (!Object.keys(data)[0]) {
+        return;
+      }
+      // предполагается что корень один
+      let symbolsWithAmountOfWord = {};
+      jsonData = data[Object.keys(data)[0]];
+      for (let key in jsonData) {
+        console.log(jsonData[key])
+        // calc total Symbols 
+        symbolsWithAmountOfWord[key] = calcSymbolsCallBack(jsonData[key]);
+      }
+      return symbolsWithAmountOfWord;
+    }
+    const calcHrefInData = (data, key = 'a') => {
+      if (!Object.keys(data)[0]) {
+        return;
+      }
+      // предполагается что корень один
+      jsonData = data[Object.keys(data)[0]];
+      if (jsonData[key] && Array.isArray(jsonData[key])) {
+        return jsonData[key].length;
+      } else if (typeof jsonData[key] === 'object') {
+        return 1;
+      } else {
+        return 0;
+      }
+    }
+
+    function renderResult(generalInfo) {
+      let $resultContainer = document.querySelector('#result');
+      $resultContainer.innerHTML = JSON.stringify(generalInfo);
+    }
+    async function fetchFromXML(searchStr) {
+      try {
+        const response = await fetch(searchStr);
+        const xml = await response.text();
+        let xmlDOM = getXMLDOM(xml);
+        let data = convertXMLToJson(xml);
+        return { data, xmlDOM };
+      } catch (e) {
+        console.log(e);
+        throw new Error('Не корректный адрес');
+      }
+    }
+    const calcHrefInXml = (xml) => {
+      let allHrefs = xml.querySelectorAll('[href]');
+      return allHrefs.length;
+    }
+    const getTotalSymbols = (root, withSpace = true) => {
+      let totalCount = 0;
+      function ViewNode(root) {
+        const ChildNodes = root.childNodes.length;
+        for (let i = 0; i < ChildNodes; i++) {
+          if (!root.childNodes.item(i).hasChildNodes()) {
+            if (withSpace) {
+              totalCount += root.childNodes.item(i).wholeText.length;
+            } else {
+              totalCount += root.childNodes.item(i).wholeText.replace(/\s/g, "")
+                .length;
+            }
+
+          }
+          ViewNode(root.childNodes.item(i));
+        }
+      }
+      ViewNode(root);
+      return totalCount;
+    };
+    const getSeatchStrFromInput = (selector) => document.querySelector(`${selector}`).value;
+    async function handleSearch(form) {
+      let generalInfo = {};
+      try {
+        const { data, xmlDOM } = await fetchFromXML(getSeatchStrFromInput('#fetchData'));
+        generalInfo.hrefInXml = calcHrefInXml(xmlDOM);
+        generalInfo.totalSymbolsWithOutSpace = getTotalSymbols(xmlDOM, false);
+        generalInfo.totalSymbolsWithSpace = getTotalSymbols(xmlDOM, true);
+        generalInfo.wrongHrefAmount = getWrongAmount(xmlDOM, "href", "id");
+        //  Число элементов без внутренних ссылок(ID есть, а href на него нет)
+        generalInfo.wrongIdAmount = getWrongAmount(xmlDOM, "id", "href");
+        renderResult(generalInfo);
+      } catch (e) {
+        console.log(e)
+        generalInfo.error = "Произошла ошибка при попытке конвертировать xml";
+        renderResult(generalInfo);
+      }
+    }
+  </script>
+</head>
+
+<body>
+  <form id="searchForm" onSubmit="handleSearch(this); return false;">
+    <input id="fetchData" />
+    <button type="submit">Поиск</button>
+  </form>
+  <div id="result"></div>
+</body>
+
+</html>
